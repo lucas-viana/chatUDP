@@ -1,9 +1,6 @@
 package view;
 
-import chat.Chat;
-import chat.ChatTCP;
-import chat.GroupChatHost;
-import chat.MessageContainer;
+import chat.*;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -13,24 +10,17 @@ import javax.swing.text.StyleConstants;
 import javax.swing.text.StyledDocument;
 import java.awt.*;
 import java.awt.event.*;
-import java.io.IOException;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 
-/**
- * Interface gráfica do Chat UDP/TCP usando Java Swing.
- * Implementa MessageContainer para receber mensagens da API do Chat.
- * Suporta chat ponto-a-ponto (UDP/TCP) e chat em grupo com host de replicação.
- */
 public class ChatView extends JFrame implements MessageContainer {
 
-    // ── Cores do tema ──────────────────────────────────────────────────────
     private static final Color BG_DARK       = new Color(18, 18, 28);
     private static final Color BG_PANEL      = new Color(28, 28, 42);
     private static final Color BG_FIELD      = new Color(38, 38, 58);
-    private static final Color BG_SENT       = new Color(79, 70, 229);   // índigo
+    private static final Color BG_SENT       = new Color(79, 70, 229);
     private static final Color BG_RECEIVED   = new Color(45, 45, 68);
-    private static final Color ACCENT        = new Color(139, 92, 246);  // violeta
+    private static final Color ACCENT        = new Color(139, 92, 246);
     private static final Color ACCENT_HOVER  = new Color(167, 139, 250);
     private static final Color TEXT_PRIMARY  = new Color(240, 240, 255);
     private static final Color TEXT_SECONDARY = new Color(160, 160, 200);
@@ -48,7 +38,6 @@ public class ChatView extends JFrame implements MessageContainer {
 
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm:ss");
 
-    // ── Componentes ────────────────────────────────────────────────────────
     private JTextField fieldLocalPort;
     private JTextField fieldRemoteIp;
     private JTextField fieldRemotePort;
@@ -59,26 +48,21 @@ public class ChatView extends JFrame implements MessageContainer {
     private JButton    btnDisconnect;
     private JLabel     lblStatus;
 
-    // ── Componentes de protocolo e grupo ────────────────────────────────────
     private JRadioButton radioUdp;
     private JRadioButton radioTcp;
     private JCheckBox    chkGroupChat;
     private JCheckBox    chkIsHost;
 
-    // ── Lógica ─────────────────────────────────────────────────────────────
-    private Chat           chat;
-    private ChatTCP        chatTcp;
+    private Sender         sender;
     private GroupChatHost  groupHost;
     private boolean        connected = false;
     private boolean        useTcp    = false;
 
-    // ── Atributos de estilo para o painel de mensagens ─────────────────────
     private final SimpleAttributeSet attrSent     = new SimpleAttributeSet();
     private final SimpleAttributeSet attrReceived = new SimpleAttributeSet();
     private final SimpleAttributeSet attrSystem   = new SimpleAttributeSet();
     private final SimpleAttributeSet attrTime     = new SimpleAttributeSet();
 
-    // ======================================================================
     public ChatView() {
         super("Chat UDP/TCP");
         configureAttributes();
@@ -86,31 +70,25 @@ public class ChatView extends JFrame implements MessageContainer {
         setVisible(true);
     }
 
-    // ── Configuração dos atributos de texto ────────────────────────────────
     private void configureAttributes() {
-        // Enviados
         StyleConstants.setForeground(attrSent, new Color(200, 190, 255));
         StyleConstants.setFontSize(attrSent, 13);
         StyleConstants.setFontFamily(attrSent, "Segoe UI");
 
-        // Recebidos
         StyleConstants.setForeground(attrReceived, TEXT_PRIMARY);
         StyleConstants.setFontSize(attrReceived, 13);
         StyleConstants.setFontFamily(attrReceived, "Segoe UI");
 
-        // Sistema
         StyleConstants.setForeground(attrSystem, TEXT_SYSTEM);
         StyleConstants.setItalic(attrSystem, true);
         StyleConstants.setFontSize(attrSystem, 12);
         StyleConstants.setFontFamily(attrSystem, "Segoe UI");
 
-        // Hora
         StyleConstants.setForeground(attrTime, TEXT_SECONDARY);
         StyleConstants.setFontSize(attrTime, 11);
         StyleConstants.setFontFamily(attrTime, "Segoe UI");
     }
 
-    // ── Construção da interface ────────────────────────────────────────────
     private void buildUI() {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setPreferredSize(new Dimension(780, 620));
@@ -125,7 +103,6 @@ public class ChatView extends JFrame implements MessageContainer {
         pack();
         setLocationRelativeTo(null);
 
-        // Ação de fechar janela
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
@@ -134,12 +111,10 @@ public class ChatView extends JFrame implements MessageContainer {
         });
     }
 
-    // ── Cabeçalho ──────────────────────────────────────────────────────────
     private JPanel buildHeader() {
         JPanel header = new JPanel(new BorderLayout());
         header.setBackground(BG_PANEL);
 
-        // Título e Status na linha superior
         JPanel topRow = new JPanel(new BorderLayout());
         topRow.setBackground(BG_PANEL);
 
@@ -155,10 +130,8 @@ public class ChatView extends JFrame implements MessageContainer {
         topRow.add(title,     BorderLayout.WEST);
         topRow.add(lblStatus, BorderLayout.EAST);
 
-        // Painel de configuração de conexão
         JPanel connPanel = buildConnectionPanel();
 
-        // Combinar em layout vertical
         JPanel headerContent = new JPanel();
         headerContent.setLayout(new BoxLayout(headerContent, BoxLayout.Y_AXIS));
         headerContent.setBackground(BG_PANEL);
@@ -168,7 +141,6 @@ public class ChatView extends JFrame implements MessageContainer {
 
         header.add(headerContent, BorderLayout.CENTER);
 
-        // Borda inferior
         header.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createMatteBorder(0, 0, 1, 0, BORDER_COLOR),
                 new EmptyBorder(14, 20, 14, 20)
@@ -177,24 +149,18 @@ public class ChatView extends JFrame implements MessageContainer {
         return header;
     }
 
-    // ── Painel de conexão ──────────────────────────────────────────────────
     private JPanel buildConnectionPanel() {
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         panel.setBackground(BG_PANEL);
 
-        // ─── Linha 1: Campos de conexão + Protocolo ───
         JPanel row1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         row1.setBackground(BG_PANEL);
 
-        // Porta local
         fieldLocalPort  = styledTextField(5, "ex: 5000");
-        // IP remoto
         fieldRemoteIp   = styledTextField(10, "ex: 192.168.1.5");
-        // Porta remota
         fieldRemotePort = styledTextField(5, "ex: 5001");
 
-        // Radio buttons de protocolo (flag UDP/TCP)
         radioUdp = new JRadioButton("UDP", true);
         radioTcp = new JRadioButton("TCP");
         styleRadioButton(radioUdp);
@@ -216,18 +182,15 @@ public class ChatView extends JFrame implements MessageContainer {
         row1.add(radioUdp);
         row1.add(radioTcp);
 
-        // ─── Linha 2: Grupo + Botões ───
         JPanel row2 = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         row2.setBackground(BG_PANEL);
 
-        // Checkboxes de chat em grupo
         chkGroupChat = new JCheckBox("Chat em Grupo");
         chkIsHost    = new JCheckBox("Sou o Host");
         styleCheckBox(chkGroupChat);
         styleCheckBox(chkIsHost);
         chkIsHost.setEnabled(false);
 
-        // Habilitar "Sou o Host" apenas quando "Chat em Grupo" estiver marcado
         chkGroupChat.addActionListener(e -> {
             chkIsHost.setEnabled(chkGroupChat.isSelected());
             if (!chkGroupChat.isSelected()) {
@@ -235,7 +198,6 @@ public class ChatView extends JFrame implements MessageContainer {
             }
         });
 
-        // Botões de conexão
         btnConnect    = buildButton("Conectar",    ACCENT,          new Color(109, 40, 217));
         btnDisconnect = buildButton("Desconectar", new Color(60, 60, 90), new Color(80, 80, 110));
         btnDisconnect.setEnabled(false);
@@ -256,7 +218,6 @@ public class ChatView extends JFrame implements MessageContainer {
         return panel;
     }
 
-    // ── Painel de chat ─────────────────────────────────────────────────────
     private JScrollPane buildChatPanel() {
         chatArea = new JTextPane();
         chatArea.setEditable(false);
@@ -271,17 +232,14 @@ public class ChatView extends JFrame implements MessageContainer {
         scroll.getViewport().setBackground(BG_DARK);
         scroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
 
-        // Personaliza a scrollbar
         scroll.getVerticalScrollBar().setBackground(BG_PANEL);
         scroll.getVerticalScrollBar().setForeground(BORDER_COLOR);
 
-        // Mensagem inicial
         appendSystemMessage("Bem-vindo ao Chat UDP/TCP! Configure a conexão e clique em Conectar.");
 
         return scroll;
     }
 
-    // ── Painel de entrada ──────────────────────────────────────────────────
     private JPanel buildInputPanel() {
         JPanel panel = new JPanel(new BorderLayout(10, 0));
         panel.setBackground(BG_PANEL);
@@ -300,10 +258,8 @@ public class ChatView extends JFrame implements MessageContainer {
                 BorderFactory.createLineBorder(BORDER_COLOR, 1, true),
                 new EmptyBorder(8, 12, 8, 12)
         ));
-        // Placeholder hint
         fieldMessage.setToolTipText("Digite sua mensagem aqui...");
 
-        // Enviar ao pressionar Enter
         fieldMessage.addActionListener(e -> handleSend());
 
         btnSend = buildButton("Enviar  ➤", ACCENT, new Color(109, 40, 217));
@@ -317,18 +273,11 @@ public class ChatView extends JFrame implements MessageContainer {
         return panel;
     }
 
-    // ── Ações ──────────────────────────────────────────────────────────────
-
-    /**
-     * Trata o evento de conectar. Cria o Chat UDP ou TCP, e configura
-     * o GroupChatHost se estiver em modo de grupo.
-     */
     private void handleConnect() {
         String localPortStr  = fieldLocalPort.getText().trim();
         String remoteIp      = fieldRemoteIp.getText().trim();
         String remotePortStr = fieldRemotePort.getText().trim();
 
-        // Validar porta local (obrigatória)
         if (localPortStr.isEmpty()) {
             showError("Informe a porta local!");
             return;
@@ -343,55 +292,51 @@ public class ChatView extends JFrame implements MessageContainer {
             return;
         }
 
-        // Validar campos remotos se preenchidos ou se for cliente de grupo
         boolean isGroupClient = chkGroupChat.isSelected() && !chkIsHost.isSelected();
-        boolean needsRemote = !remoteIp.isEmpty() || !remotePortStr.isEmpty() || isGroupClient;
-
-        if (needsRemote) {
-            if (remoteIp.isEmpty()) {
+        boolean isHost = chkGroupChat.isSelected() && chkIsHost.isSelected();
+        
+        // Se for host de grupo puro (que só vai replicar), talvez nem saiba quem é o remoto ainda
+        // No entanto, ChatFactory precisa de um IP/Porta remoto para instanciar o Sender base!
+        // No caso do host do grupo sem IP, colocaremos 127.0.0.1 porta 1 provisoriamente,
+        // mas ele usa o GroupChatHost para enviar para seus peers separadamente.
+        if (remoteIp.isEmpty()) {
+            if (isHost) {
+                remoteIp = "127.0.0.1";
+            } else {
                 showError("Informe o IP remoto!");
                 return;
             }
-            if (remotePortStr.isEmpty()) {
+        }
+        if (remotePortStr.isEmpty()) {
+            if (isHost) {
+                remotePortStr = "1";
+            } else {
                 showError("Informe a porta remota!");
                 return;
             }
-            try {
-                int rp = Integer.parseInt(remotePortStr);
-                if (rp < 1 || rp > 65535) throw new NumberFormatException();
-            } catch (NumberFormatException ex) {
-                showError("Porta remota inválida! Use um número entre 1 e 65535.");
-                return;
-            }
+        }
+        
+        int remotePort;
+        try {
+            remotePort = Integer.parseInt(remotePortStr);
+            if (remotePort < 1 || remotePort > 65535) throw new NumberFormatException();
+        } catch (NumberFormatException ex) {
+            showError("Porta remota inválida! Use um número entre 1 e 65535.");
+            return;
         }
 
         useTcp = radioTcp.isSelected();
         boolean isGroupMode = chkGroupChat.isSelected();
-        boolean isHost      = chkIsHost.isSelected();
 
         try {
-            // Limpar recursos anteriores
             cleanupResources();
 
             if (isGroupMode && isHost) {
-                // ── Modo Host do Grupo ──
-                groupHost = new GroupChatHost(this);
-                if (useTcp) {
-                    chatTcp = new ChatTCP(localPort, groupHost);
-                    groupHost.setChatTcp(chatTcp);
-                } else {
-                    chat = new Chat(localPort, groupHost);
-                    groupHost.setChatUdp(chat);
-                }
+                groupHost = new GroupChatHost(this, useTcp);
+                sender = ChatFactory.build(useTcp, remoteIp, remotePort, localPort, groupHost);
                 appendSystemMessage("🏠 Modo Host ativado. Aguardando clientes...");
-
             } else {
-                // ── Modo normal ou cliente de grupo ──
-                if (useTcp) {
-                    chatTcp = new ChatTCP(localPort, this);
-                } else {
-                    chat = new Chat(localPort, this);
-                }
+                sender = ChatFactory.build(useTcp, remoteIp, remotePort, localPort, this);
             }
 
             connected = true;
@@ -400,27 +345,22 @@ public class ChatView extends JFrame implements MessageContainer {
             String protocol = useTcp ? "TCP" : "UDP";
             appendSystemMessage("✅ Conectado na porta local " + localPort + " (" + protocol + ").");
 
-            if (!remoteIp.isEmpty()) {
+            if (!remoteIp.equals("127.0.0.1") || !isHost) {
                 appendSystemMessage("📡 Pronto para enviar para " + remoteIp + ":" + remotePortStr + ".");
             }
 
-            // Se for cliente de grupo, enviar REGISTER automaticamente
-            if (isGroupMode && !isHost && !remoteIp.isEmpty()) {
+            if (isGroupMode && !isHost) {
                 sendControlMessage("##REGISTER##" + localPort);
                 appendSystemMessage("📋 Registro enviado ao host.");
             }
 
-        } catch (IOException ex) {
+        } catch (ChatException ex) {
             showError("Erro ao conectar: " + ex.getMessage());
             appendSystemMessage("❌ Falha na conexão: " + ex.getMessage());
         }
     }
 
-    /**
-     * Trata o evento de desconectar. Envia UNREGISTER se for cliente de grupo.
-     */
     private void handleDisconnect() {
-        // Se for cliente de grupo, notificar saída ao host
         if (chkGroupChat.isSelected() && !chkIsHost.isSelected()) {
             sendControlMessage("##UNREGISTER##" + fieldLocalPort.getText().trim());
             appendSystemMessage("📋 Saída do grupo notificada ao host.");
@@ -432,10 +372,6 @@ public class ChatView extends JFrame implements MessageContainer {
         appendSystemMessage("🔴 Desconectado.");
     }
 
-    /**
-     * Trata o evento de enviar mensagem. Roteia para o GroupChatHost se for host,
-     * ou envia diretamente via Chat/ChatTCP caso contrário.
-     */
     private void handleSend() {
         if (!connected) {
             showError("Você não está conectado!");
@@ -445,7 +381,6 @@ public class ChatView extends JFrame implements MessageContainer {
         String message = fieldMessage.getText().trim();
         if (message.isEmpty()) return;
 
-        // Se for host de grupo, broadcast para todos os peers
         boolean isHost = chkGroupChat.isSelected() && chkIsHost.isSelected();
         if (isHost && groupHost != null) {
             groupHost.broadcastFromHost(message);
@@ -454,83 +389,42 @@ public class ChatView extends JFrame implements MessageContainer {
             return;
         }
 
-        // Envio direto (ponto-a-ponto ou cliente de grupo → host)
-        String remoteIp      = fieldRemoteIp.getText().trim();
-        String remotePortStr = fieldRemotePort.getText().trim();
-
-        if (remoteIp.isEmpty() || remotePortStr.isEmpty()) {
-            showError("Informe o IP e a porta remota para enviar mensagens!");
-            return;
-        }
-
-        int remotePort;
         try {
-            remotePort = Integer.parseInt(remotePortStr);
-        } catch (NumberFormatException ex) {
-            showError("Porta remota inválida!");
-            return;
-        }
-
-        try {
-            if (useTcp && chatTcp != null) {
-                chatTcp.sendMessage(message, remoteIp, remotePort);
-            } else if (chat != null) {
-                chat.sendMessage(message, remoteIp, remotePort);
+            if (sender != null) {
+                sender.send(message);
             }
             appendSentMessage("Você", message);
             fieldMessage.setText("");
-        } catch (IOException ex) {
+        } catch (ChatException ex) {
             showError("Erro ao enviar mensagem: " + ex.getMessage());
             appendSystemMessage("❌ Falha ao enviar: " + ex.getMessage());
         }
     }
 
-    /**
-     * Envia uma mensagem de controle (REGISTER/UNREGISTER) para o host remoto.
-     */
     private void sendControlMessage(String controlMsg) {
-        String remoteIp      = fieldRemoteIp.getText().trim();
-        String remotePortStr = fieldRemotePort.getText().trim();
-        if (remoteIp.isEmpty() || remotePortStr.isEmpty()) return;
-
         try {
-            int remotePort = Integer.parseInt(remotePortStr);
-            if (useTcp && chatTcp != null) {
-                chatTcp.sendMessage(controlMsg, remoteIp, remotePort);
-            } else if (chat != null) {
-                chat.sendMessage(controlMsg, remoteIp, remotePort);
+            if (sender != null) {
+                sender.send(controlMsg);
             }
-        } catch (Exception e) {
+        } catch (ChatException e) {
             appendSystemMessage("⚠ Falha ao enviar mensagem de controle: " + e.getMessage());
         }
     }
 
-    /**
-     * Libera todos os recursos de rede (Chat, ChatTCP, GroupChatHost).
-     */
     private void cleanupResources() {
         if (groupHost != null) {
             groupHost.close();
             groupHost = null;
         }
-        if (chat != null) {
-            chat.close();
-            chat = null;
-        }
-        if (chatTcp != null) {
-            chatTcp.close();
-            chatTcp = null;
-        }
+        sender = null;
+        ChatFactory.stopReceiver(); // Pára os receivers
     }
 
-    // ── MessageContainer ───────────────────────────────────────────────────
     @Override
-    public void receiveMessage(String message) {
-        // Atualizar UI na thread do Swing
+    public void newMessage(String message) {
         SwingUtilities.invokeLater(() -> appendReceivedMessage(message));
     }
 
-    // ── Helpers de UI ──────────────────────────────────────────────────────
     private void setConnectionState(boolean connected) {
         if (connected) {
             lblStatus.setText("● Conectado");
@@ -545,7 +439,6 @@ public class ChatView extends JFrame implements MessageContainer {
         fieldMessage.setEnabled(connected);
         btnSend.setEnabled(connected);
 
-        // Desabilitar controles de protocolo e grupo durante conexão ativa
         radioUdp.setEnabled(!connected);
         radioTcp.setEnabled(!connected);
         chkGroupChat.setEnabled(!connected);
@@ -595,7 +488,6 @@ public class ChatView extends JFrame implements MessageContainer {
         JOptionPane.showMessageDialog(this, message, "Erro", JOptionPane.ERROR_MESSAGE);
     }
 
-    // ── Factory helpers ────────────────────────────────────────────────────
     private JLabel styledLabel(String text) {
         JLabel lbl = new JLabel(text);
         lbl.setFont(FONT_LABEL);
@@ -617,9 +509,6 @@ public class ChatView extends JFrame implements MessageContainer {
         return tf;
     }
 
-    /**
-     * Estiliza um JRadioButton para o tema escuro.
-     */
     private void styleRadioButton(JRadioButton rb) {
         rb.setFont(FONT_LABEL);
         rb.setForeground(TEXT_PRIMARY);
@@ -628,9 +517,6 @@ public class ChatView extends JFrame implements MessageContainer {
         rb.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
     }
 
-    /**
-     * Estiliza um JCheckBox para o tema escuro.
-     */
     private void styleCheckBox(JCheckBox cb) {
         cb.setFont(FONT_LABEL);
         cb.setForeground(TEXT_PRIMARY);
